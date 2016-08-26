@@ -1,7 +1,6 @@
 import locust
-import runners
+from . import runners
 
-import time
 import gevent
 import sys
 import os
@@ -11,16 +10,16 @@ import logging
 import socket
 from optparse import OptionParser
 
-import web
-from log import setup_logging, console_logger
-from stats import stats_printer, print_percentile_stats, print_error_report, print_stats
-from inspectlocust import print_task_ratio, get_task_ratio_dict
-from core import Locust, HttpLocust
-from runners import MasterLocustRunner, SlaveLocustRunner, LocalLocustRunner
-import events
+from . import web
+from .log import setup_logging, console_logger
+from .stats import stats_printer, print_percentile_stats, print_error_report, print_stats
+from .inspectlocust import print_task_ratio, get_task_ratio_dict
+from .core import Locust, HttpLocust
+from .runners import MasterLocustRunner, SlaveLocustRunner, LocalLocustRunner
+from . import events
 
 _internals = [Locust, HttpLocust]
-version = locust.version
+version = locust.__version__
 
 def parse_options():
     """
@@ -229,16 +228,6 @@ def parse_options():
         help="show program's version number and exit"
     )
 
-    # Length of time to run load test
-    parser.add_option(
-        '-T', '--time-to-run',
-        type=int,
-        dest='time_to_run',
-        default=0,
-        help="set a hard timeout on running load tests."
-    )
-
-
     # Finalize
     # Return three-tuple of parser + the output from parse_args (opt obj, args)
     opts, args = parser.parse_args()
@@ -344,18 +333,12 @@ def load_locustfile(path):
 def main():
     parser, options, arguments = parse_options()
 
-    # TIME LOCK LOAD TEST
-    # TODO: add error catching for non-integer values passed
-    if options.time_to_run > 0:
-        time_start_test = time.time()
-        time_stop_test = time_start_test + options.time_to_run
-
     # setup logging
     setup_logging(options.loglevel, options.logfile)
     logger = logging.getLogger(__name__)
     
     if options.show_version:
-        print "Locust %s" % (version,)
+        print("Locust %s" % (version,))
         sys.exit(0)
 
     locustfile = find_locustfile(options.locustfile)
@@ -413,8 +396,7 @@ def main():
         # spawn web greenlet
         logger.info("Starting web monitor at %s:%s" % (options.web_host or "*", options.port))
         main_greenlet = gevent.spawn(web.start, locust_classes, options)
-
-
+    
     if not options.master and not options.slave:
         runners.locust_runner = LocalLocustRunner(locust_classes, options)
         # spawn client spawning/hatching greenlet
@@ -427,14 +409,14 @@ def main():
         try:
             runners.locust_runner = SlaveLocustRunner(locust_classes, options)
             main_greenlet = runners.locust_runner.greenlet
-        except socket.error, e:
+        except socket.error as e:
             logger.error("Failed to connect to the Locust master: %s", e)
             sys.exit(-1)
-
+    
     if not options.only_summary and (options.print_stats or (options.no_web and not options.slave)):
         # spawn stats printing greenlet
         gevent.spawn(stats_printer)
-
+    
     def shutdown(code=0):
         """
         Shut down locust by firing quitting event, printing stats and exiting
@@ -447,13 +429,13 @@ def main():
 
         print_error_report()
         sys.exit(code)
-
+    
     # install SIGTERM handler
     def sig_term_handler():
         logger.info("Got SIGTERM signal")
         shutdown(0)
     gevent.signal(signal.SIGTERM, sig_term_handler)
-
+    
     try:
         logger.info("Starting Locust %s" % version)
         main_greenlet.join()
@@ -463,11 +445,6 @@ def main():
         shutdown(code=code)
     except KeyboardInterrupt as e:
         shutdown(0)
-    # logger.info("TIME LIMIT MET")
-    # logger.info("time_test_start: %s" % time_start_test)
-    # logger.info("time_test_stop: %s" % time_stop_test)
-    # logger.info("Shutting down...")
-    # shutdown(0)
 
 if __name__ == '__main__':
     main()
